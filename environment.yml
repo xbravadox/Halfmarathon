@@ -1,0 +1,18 @@
+name: halfmarathon
+channels:
+  - conda-forge
+dependencies:
+  - boto3
+  - langfuse-python
+  - matplotlib
+  - numpy
+  - openai
+  - pandas
+  - pycaret
+  - python=3.11
+  - seaborn
+  - streamlit
+  - pip:
+    - colorlover==0.3.0
+
+prefix: "/home/grzesiek/miniconda3/envs/halfmarathon"

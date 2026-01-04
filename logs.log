@@ -1,3 +1,0 @@
-2026-01-03 19:57:40,862:WARNING:/home/grzesiek/miniconda3/envs/halfmarathon/lib/python3.11/site-packages/_distutils_hack/__init__.py:30: UserWarning: Setuptools is replacing distutils. Support for replacing an already imported distutils is deprecated. In the future, this condition will fail. Register concerns at https://github.com/pypa/setuptools/issues/new?template=distutils-deprecation.yml
-  warnings.warn(
-

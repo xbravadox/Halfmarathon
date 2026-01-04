@@ -13,3 +13,5 @@ events.out.tfevents*
 
 # Jupyter
 .ipynb_checkpoints/
+
+*.log

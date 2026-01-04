@@ -5,10 +5,12 @@ import json
 import os
 from io import BytesIO
 from dotenv import load_dotenv
-import openai
+from langfuse import observe, Langfuse
+from langfuse.openai import openai
 import pandas as pd
 
 load_dotenv()
+langfuse = Langfuse()
 
 # Konfiguracja
 openai.api_key = os.getenv('OPENAI_API_KEY')
@@ -31,22 +33,33 @@ def load_model():
     return model
 
 # Funkcja parsowania przez OpenAI
+@observe(name="parse_user_input")
 def parse_user_input(text):
     prompt = f"""
-    Przeanalizuj poniższy tekst użytkownika i wyciągnij następujące informacje:
-    - sex: płeć (M lub K)
-    - age: wiek (liczba całkowita)
-    - time_5km_s: czas na 5km w sekundach (liczba całkowita)
-    
-    Zwróć wynik w formacie JSON.
-    
-    Tekst użytkownika: {text}
-    """
+Wyekstrahuj z tekstu użytkownika następujące dane:
+- sex: płeć (M dla mężczyzn, K dla kobiet)
+- age: wiek jako liczba całkowita
+- time_5km_s: czas biegu na 5 km ZAWSZE w sekundach (liczba całkowita)
+
+KONWERSJA CZASU NA SEKUNDY:
+- "25 minut" / "25 min" → 1500 sekund
+- "22:30" (format MM:SS) → 1350 sekund (22*60 + 30)
+- "0:22:30" (format H:MM:SS) → 1350 sekund
+- "22 minuty 30 sekund" → 1350 sekund
+- "22.5 minuty" → 1350 sekund
+
+ZASADY:
+1. Zawsze konwertuj czas na sekundy
+2. Jeśli nie możesz wyekstrahować danej, zwróć null
+3. Zwróć WYŁĄCZNIE poprawny JSON bez dodatkowego tekstu
+
+Tekst użytkownika: {text}
+"""
     
     response = openai.chat.completions.create(
         model="gpt-4",
         messages=[
-            {"role": "system", "content": "Jesteś asystentem ekstrakcji danych. Zwracaj tylko JSON."},
+            {"role": "system", "content": "Jesteś asystentem ekstrakcji danych. Zwracaj tylko JSON w formacie: {\"sex\": \"M\" lub \"K\", \"age\": liczba, \"time_5km_s\": liczba}"},
             {"role": "user", "content": prompt}
         ],
         temperature=0
@@ -55,7 +68,11 @@ def parse_user_input(text):
     result = json.loads(response.choices[0].message.content)
     return result
 
+
+
+
 # Walidacja danych
+@observe(name="validate_data")
 def validate_data(data):
     errors = []
     
@@ -70,6 +87,7 @@ def validate_data(data):
     
     return errors
 
+
 # Konwersja sekund na HH:MM:SS
 def seconds_to_time(seconds):
     h = int(seconds // 3600)
@@ -77,43 +95,74 @@ def seconds_to_time(seconds):
     s = int(seconds % 60)
     return f"{h:02d}:{m:02d}:{s:02d}"
 
+@observe(name="predict_half_marathon")
+def predict_half_marathon(user_input):
+    """Główna funkcja predykcji - logowana jako jeden trace."""
+    
+    # Parsowanie przez LLM
+    parsed_data = parse_user_input(user_input)
+    
+    # Walidacja
+    errors = validate_data(parsed_data)
+    
+    if errors:
+        return {
+            'success': False,
+            'errors': errors,
+            'parsed_data': parsed_data
+        }
+    
+    # Predykcja
+    model = load_model()
+    
+    df_input = pd.DataFrame([{
+        'sex': parsed_data['sex'],
+        'age': float(parsed_data['age']),
+        'time_5km_s': float(parsed_data['time_5km_s'])
+    }])
+    
+    prediction = model.predict(df_input)[0]
+    formatted_time = seconds_to_time(prediction)
+    
+    return {
+        'success': True,
+        'parsed_data': parsed_data,
+        'prediction_seconds': prediction,
+        'prediction_formatted': formatted_time
+    }
+
+
+
 # Interfejs Streamlit
 st.title("Predykcja czasu półmaratonu")
 st.write("Wpisz swoje dane w dowolnej formie, np: 'Jestem mężczyzną, mam 35 lat, 5km biegnę w 25 minut'")
+
+with st.expander("ℹ️ Jakie dane są wymagane?"):
+    st.markdown("""
+    - **Płeć**: mężczyzna/kobieta (M/K)
+    - **Wiek**: liczba całkowita (18-80 lat)
+    - **Czas na 5 km**: w dowolnym formacie (np. 25 minut, 22:30, 22 minuty 30 sekund)
+    """)
 
 user_input = st.text_area("Twoje dane:", height=100)
 
 if st.button("Przewiduj czas"):
     if user_input:
         try:
-            # Parsowanie przez LLM
             with st.spinner("Analizuję dane..."):
-                parsed_data = parse_user_input(user_input)
+                result = predict_half_marathon(user_input)
             
-            st.write("Wyekstrahowane dane:", parsed_data)
+            st.write("Wyekstrahowane dane:", result['parsed_data'])
             
-            # Walidacja
-            errors = validate_data(parsed_data)
-            
-            if errors:
-                st.error("Błędy walidacji:")
-                for error in errors:
-                    st.write(f"- {error}")
+            if result['success']:
+                st.success(f"Przewidywany czas półmaratonu: {result['prediction_formatted']}")
             else:
-                # Predykcja
-                model = load_model()
-                
-                df_input = pd.DataFrame([{
-                    'sex': parsed_data['sex'],
-                    'age': float(parsed_data['age']),
-                    'time_5km_s': float(parsed_data['time_5km_s'])
-                }])
-                
-                prediction = model.predict(df_input)[0]
-                
-                st.success(f"Przewidywany czas półmaratonu: {seconds_to_time(prediction)}")
+                st.error("Błędy walidacji:")
+                for error in result['errors']:
+                    st.write(f"- {error}")
                 
         except Exception as e:
             st.error(f"Wystąpił błąd: {str(e)}")
     else:
         st.warning("Proszę wpisać dane")
+

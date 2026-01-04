@@ -8,8 +8,10 @@ dependencies:
   - numpy
   - openai
   - pandas
-  - pycaret
+  - pycaret=3.3.2
   - python=3.11
+  - python-dotenv
+  - scikit-learn=1.4.*
   - seaborn
   - streamlit
   - pip:

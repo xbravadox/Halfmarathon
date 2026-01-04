@@ -1,0 +1,15 @@
+.env
+
+# PyCaret/CatBoost logs
+learn_error.tsv
+time_left.tsv
+catboost_training.json
+catboost_info/
+
+
+# TensorBoard logs
+events.out.tfevents*
+*.tfevents
+
+# Jupyter
+.ipynb_checkpoints/

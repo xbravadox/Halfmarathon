@@ -1,0 +1,9 @@
+streamlit==1.52.2
+pandas==2.1.4
+numpy==1.26.4
+pycaret==3.3.2
+scikit-learn==1.4.2
+boto3==1.42.21
+openai==2.14.0
+python-dotenv==1.2.1
+langfuse==3.11.2
